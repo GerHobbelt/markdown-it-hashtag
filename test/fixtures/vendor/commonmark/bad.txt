@@ -1,0 +1,53 @@
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src line: 3136
+
+.
+[foo]
+
+> [foo]: /url
+.
+<p><a href="/url">foo</a></p>
+<blockquote>
+</blockquote>
+.
+
+error:
+
+<p><a href="/url">foo</a></p>
+<blockquote>
+</blockquote>
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src line: 3534
+
+.
+>
+.
+<blockquote>
+</blockquote>
+.
+
+error:
+
+<blockquote>
+</blockquote>
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src line: 3542
+
+.
+>
+>  
+> 
+.
+<blockquote>
+</blockquote>
+.
+
+error:
+
+<blockquote>
+</blockquote>
+

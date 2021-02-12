@@ -1,7 +1,10 @@
 PATH        := ./node_modules/.bin:${PATH}
 
-NPM_PACKAGE := $(shell node -e 'process.stdout.write(require("./package.json").name)')
-NPM_VERSION := $(shell node -e 'process.stdout.write(require("./package.json").version)')
+NPM_PACKAGE := $(shell node support/getGlobalName.js package)
+NPM_VERSION := $(shell node support/getGlobalName.js version)
+
+GLOBAL_NAME := $(shell node support/getGlobalName.js global)
+BUNDLE_NAME := $(shell node support/getGlobalName.js microbundle)
 
 TMP_PATH    := /tmp/${NPM_PACKAGE}-$(shell date +%s)
 
@@ -9,35 +12,87 @@ REMOTE_NAME ?= origin
 REMOTE_REPO ?= $(shell git config --get remote.${REMOTE_NAME}.url)
 
 CURR_HEAD   := $(firstword $(shell git show-ref --hash HEAD | cut -b -6) master)
-GITHUB_PROJ := https://github.com/svbergerem/${NPM_PACKAGE}
+GITHUB_PROJ := https://github.com//GerHobbelt/${NPM_PACKAGE}
 
+
+build: lintfix bundle test coverage todo 
 
 lint:
 	eslint .
 
-test: lint
-	mocha -R spec --inline-diffs
+lintfix:
+	eslint --fix .
+
+bundle:
+	-rm -rf ./dist
+	mkdir dist
+	microbundle --no-compress --target node --strict --name ${GLOBAL_NAME} -f modern
+	mv dist/${GLOBAL_NAME}.modern.js dist/${GLOBAL_NAME}.js
+	mv dist/${GLOBAL_NAME}.modern.js.map dist/${GLOBAL_NAME}.js.map
+	npx prepend-header 'dist/*js' support/header.js
+
+test: specsplit
+	mocha
 
 coverage:
-	rm -rf coverage
-	istanbul cover node_modules/.bin/_mocha
+	-rm -rf coverage
+	-rm -rf .nyc_output
+	cross-env NODE_ENV=test nyc mocha
 
-test-ci: lint
-	istanbul cover ./node_modules/mocha/bin/_mocha --report lcovonly -- -R spec && cat ./coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js && rm -rf ./coverage
+report-coverage: lint coverage
 
-browserify:
-	rm -rf ./dist
-	mkdir dist
-	# Browserify
-	( printf "/*! ${NPM_PACKAGE} ${NPM_VERSION} ${GITHUB_PROJ} @license MIT */" ; \
-		browserify ./ -s markdownitHashtag -t [ babelify --presets [ env ] ] \
-		) > dist/markdown-it-hashtag.js
-	# Minify
-	uglifyjs dist/markdown-it-hashtag.js -b beautify=false,ascii_only=true -c -m \
-		--preamble "/*! ${NPM_PACKAGE} ${NPM_VERSION} ${GITHUB_PROJ} @license MIT */" \
-		> dist/markdown-it-hashtag.min.js
 
-release: coverage browserify
+publish:
+	@if test 0 -ne `git status --porcelain | wc -l` ; then \
+		echo "Unclean working tree. Commit or stash changes first." >&2 ; \
+		exit 128 ; \
+		fi
+	@if test 0 -ne `git fetch ; git status | grep '^# Your branch' | wc -l` ; then \
+		echo "Local/Remote history differs. Please push/pull changes." >&2 ; \
+		exit 128 ; \
+		fi
+	@if test 0 -ne `git tag -l ${NPM_VERSION} | wc -l` ; then \
+		echo "Tag ${NPM_VERSION} exists. Update package.json" >&2 ; \
+		exit 128 ; \
+		fi
+	git tag ${NPM_VERSION} && git push origin ${NPM_VERSION}
+	npm run pub
 
-.PHONY: lint test coverage
-.SILENT: lint test
+
+specsplit:
+	./support/specsplit.js good -o test/fixtures/vendor/commonmark/good.txt
+	./support/specsplit.js bad -o test/fixtures/vendor/commonmark/bad.txt
+	./support/specsplit.js
+
+todo:
+	@echo ""
+	@echo "TODO list"
+	@echo "---------"
+	@echo ""
+	grep 'TODO' -n -r ./ --exclude-dir=node_modules --exclude-dir=unicode-homographs --exclude-dir=.nyc_output --exclude-dir=dist --exclude-dir=coverage --exclude=Makefile 2>/dev/null || test true
+
+clean:
+	-rm -rf ./coverage/
+	-rm -rf ./dist/
+	-rm -rf ./.nyc_output/
+
+superclean: clean
+	-rm -rf ./node_modules/
+	-rm -f ./package-lock.json
+
+prep: superclean
+	-ncu -a --packageFile=package.json
+	-npm install
+	-npm audit fix
+
+prep-ci: clean
+	-rm -rf ./node_modules/
+	-npm ci
+	-npm audit fix
+
+report-config:
+	-echo "NPM_PACKAGE=${NPM_PACKAGE} NPM_VERSION=${NPM_VERSION} GLOBAL_NAME=${GLOBAL_NAME} BUNDLE_NAME=${BUNDLE_NAME} TMP_PATH=${TMP_PATH} REMOTE_NAME=${REMOTE_NAME} REMOTE_REPO=${REMOTE_REPO} CURR_HEAD=${CURR_HEAD}"
+
+
+.PHONY: clean superclean prep prep-ci report-config publish lint lintfix test todo coverage report-coverage doc build gh-doc specsplit bundle
+.SILENT: help lint test todo
